@@ -1,0 +1,376 @@
+import random
+import time
+import os
+from pymongo import MongoClient
+import requests
+
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# URI kết nối MongoDB Atlas và URL webhook Discord
+MONGO_URI = "mongodb+srv://laiduc1312:laiduc2009@cluster0.ktdby.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1327548042441658408/-a6LBgKzUJPSFk22eUyqCTZNGTg5YfgqE3HcmaIBfeKsKi4lhgiXr47xgUlCXkrlKwFh"
+
+# Kết nối MongoDB
+client = MongoClient(MONGO_URI)
+db = client['game_db']  # Tên cơ sở dữ liệu
+players_collection = db['players']  # Tên collection
+
+# Hàm gửi thông tin tới webhook Discord
+def send_to_discord(webhook_url, username, balance):
+    role_id = "1327619782211670106"
+    data = {
+        "content": f"<@&{role_id}> \n🎮 **Tài khoản**: {username}\n💰 **Số dư hiện tại**: {balance} PLDCoin"
+    }
+    try:
+        response = requests.post(webhook_url, json=data)
+        if response.status_code == 204:
+            print("✅ Đã gửi thông tin đến Discord!")
+        else:
+            print(f"❌ Lỗi khi gửi thông tin: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"⚠️ Có lỗi xảy ra khi gửi tới Discord: {e}")
+
+# Hàm đăng ký tài khoản
+def register():
+    username = input("🔑 Nhập tên tài khoản mới: ").strip()
+    if username == "":
+        print("⚠️ Tên tài khoản không được để trống.")
+        return None
+    # Kiểm tra nếu tài khoản đã tồn tại
+    existing_player = players_collection.find_one({"username": username})
+    if existing_player:
+        print("❌ Tài khoản đã tồn tại. Vui lòng chọn tên khác.")
+        return None
+    # Tạo tài khoản mới với số dư 1000 PLDCoin
+    player = {"username": username, "balance": 1000}
+    players_collection.insert_one(player)
+    print(f"✅ Đăng ký thành công! Tài khoản {username} được khởi tạo với 1000 PLDCoin.")
+    return username
+
+# Hàm đăng nhập
+def login():
+    username = input("🔑 Nhập tên tài khoản: ").strip()
+    player = players_collection.find_one({"username": username})
+    if player:
+        print(f"✅ Đăng nhập thành công! Chào mừng {username} 🎉.")
+        return username
+    else:
+        print("❌ Tài khoản không tồn tại. Vui lòng đăng ký trước.")
+        return None
+
+# Hàm kiểm tra số tiền cược hợp lệ
+def valid_bet(balance):
+    while True:
+        try:
+            bet = input(f"💸 Nhập số tiền bạn muốn cược (hoặc 'all' để cược toàn bộ {balance} PLDCoin): ").strip().lower()
+            if bet == 'all':
+                bet = balance
+            else:
+                bet = int(bet)
+
+            if bet <= 0:
+                print("⚠️ Số tiền cược phải lớn hơn 0.")
+            elif bet > balance:
+                print("⚠️ Bạn không đủ tiền để cược số tiền này.")
+            else:
+                return bet
+        except ValueError:
+            print("⚠️ Vui lòng nhập số hợp lệ.")
+            # time.sleep(1)
+            # clear()  # Xóa màn hình nếu nhập sai
+
+# Hàm chơi tài xỉu
+def choi_tai_xiu(username):
+    # Lấy thông tin người chơi
+    player = players_collection.find_one({"username": username})
+    balance = player['balance']
+
+    while True:
+        print(title2)
+        print(f"💰 **Số dư tài khoản**: {balance} PLDCoin")
+        cnc = input('🎲 Chọn "tai" hoặc "xiu" (nhập "thoat" để dừng): ').lower()
+        if cnc == 'thoat':
+            break
+        if cnc not in ['tai', 'xiu']:
+            print("⚠️ Vui lòng chọn 'tai' hoặc 'xiu'.")
+            time.sleep(1)
+            clear()
+            continue
+
+        bet = valid_bet(balance)  # Gọi hàm kiểm tra cược hợp lệ
+
+        # Điều chỉnh xác suất cho tài và xiu
+        if random.random() <= 0.4:  # 40% chance for 'tai'
+            result = 'tai'
+        else:  # 60% chance for 'xiu'
+            result = 'xiu'
+
+        # Kết quả tài/xỉu
+        xx1, xx2, xx3 = random.randint(1, 6), random.randint(1, 6), random.randint(1, 6)
+        total = xx1 + xx2 + xx3
+        print(f"🎲🎲🎲 Xúc xắc:")
+        time.sleep(1)
+        print("Xúc xắc 1 🎲: ", xx1)
+        time.sleep(1)
+        print("Xúc xắc 2 🎲: ", xx2)
+        time.sleep(1)
+        print("Xúc xắc 3 🎲: ", xx3)
+        time.sleep(1)
+        print("Tổng: ", total)
+
+        if cnc == result:
+            balance += bet
+            print("🎉 Bạn thắng!")
+        else:
+            balance -= bet
+            print("😢 Bạn thua!")
+
+        print(f"💰 **Số dư hiện tại**: {balance} PLDCoin")
+        send_to_discord(DISCORD_WEBHOOK_URL, username, balance)
+
+        # Cập nhật số dư vào MongoDB
+        players_collection.update_one({"username": username}, {"$set": {"balance": balance}})
+        time.sleep(5)
+        clear()
+
+
+# Main program
+title2 = '''
+___________      .__       .__        __________.__       .___
+\__    ___/____  |__|__  __|__|__ __  \______   \  |    __| _/
+  |    |  \__  \ |  \  \/  /  |  |  \  |     ___/  |   / __ | 
+  |    |   / __ \|  |>    <|  |  |  /  |    |   |  |__/ /_/ | 
+  |____|  (____  /__/__/\_ \__|____/   |____|   |____/\____ | 
+               \/         \/                               \/ 
+'''
+
+title = '''
+██████╗ ██╗   ██╗██████╗ ██╗     ██╗███╗   ██╗███████╗██████╗ ███████╗██╗   ██╗
+██╔══██╗██║   ██║██╔══██╗██║     ██║████╗  ██║██╔════╝██╔══██╗██╔════╝██║   ██║
+██████╔╝██║   ██║██████╔╝██║     ██║██╔██╗ ██║█████╗  ██║  ██║█████╗  ██║   ██║
+██╔═══╝ ██║   ██║██╔══██╗██║     ██║██║╚██╗██║██╔══╝  ██║  ██║██╔══╝  ╚██╗ ██╔╝
+██║     ╚██████╔╝██████╔╝███████╗██║██║ ╚████║███████╗██████╔╝███████╗ ╚████╔╝ 
+╚═╝      ╚═════╝ ╚═════╝ ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝╚═════╝ ╚══════╝  ╚═══╝  
+'''
+
+while True:
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print(title)
+    print("-------------------------------")
+    print("|1️⃣  Đăng ký tài khoản")
+    print("|2️⃣  Đăng nhập")
+    print("|3️⃣  Thoát\n")
+    choice = input("🔧 Lựa chọn của bạn: ").strip()
+    if choice == '1':
+        if register():
+            input("✅ Nhấn Enter để quay lại menu chính...")
+    elif choice == '2':
+        user = login()
+        if user:
+            while True:
+                os.system('cls' if os.name == 'nt' else 'clear')
+                print(title2)
+                print("-------------------------------\n")
+                print("1️⃣  Chơi tài xỉu")
+                print("\n2️⃣  Đăng xuất\n")
+                sub_choice = input("🔧 Lựa chọn của bạn: ").strip()
+                if sub_choice == '1':
+                    clear()
+                    choi_tai_xiu(user)
+                elif sub_choice == '2':
+                    print("👋 Đăng xuất thành công!")
+                    break
+    elif choice == '3':
+        print("👋 Tạm biệt! Hẹn gặp lại.")
+        break
+    else:
+        print("⚠️ Lựa chọn không hợp lệ.")
+import random
+import time
+import os
+from pymongo import MongoClient
+import requests
+
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# URI kết nối MongoDB Atlas và URL webhook Discord
+MONGO_URI = "mongodb+srv://laiduc1312:laiduc2009@cluster0.ktdby.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1327548042441658408/-a6LBgKzUJPSFk22eUyqCTZNGTg5YfgqE3HcmaIBfeKsKi4lhgiXr47xgUlCXkrlKwFh"
+
+# Kết nối MongoDB
+client = MongoClient(MONGO_URI)
+db = client['game_db']  # Tên cơ sở dữ liệu
+players_collection = db['players']  # Tên collection
+
+# Hàm gửi thông tin tới webhook Discord
+def send_to_discord(webhook_url, username, balance):
+    role_id = "1327619782211670106"
+    data = {
+        "content": f"<@&{role_id}> \n🎮 **Tài khoản**: {username}\n💰 **Số dư hiện tại**: {balance} PLDCoin"
+    }
+    try:
+        response = requests.post(webhook_url, json=data)
+        if response.status_code == 204:
+            print("✅ Đã gửi thông tin đến Discord!")
+        else:
+            print(f"❌ Lỗi khi gửi thông tin: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"⚠️ Có lỗi xảy ra khi gửi tới Discord: {e}")
+
+# Hàm đăng ký tài khoản
+def register():
+    username = input("🔑 Nhập tên tài khoản mới: ").strip()
+    if username == "":
+        print("⚠️ Tên tài khoản không được để trống.")
+        return None
+    # Kiểm tra nếu tài khoản đã tồn tại
+    existing_player = players_collection.find_one({"username": username})
+    if existing_player:
+        print("❌ Tài khoản đã tồn tại. Vui lòng chọn tên khác.")
+        return None
+    # Tạo tài khoản mới với số dư 1000 PLDCoin
+    player = {"username": username, "balance": 1000}
+    players_collection.insert_one(player)
+    print(f"✅ Đăng ký thành công! Tài khoản {username} được khởi tạo với 1000 PLDCoin.")
+    return username
+
+# Hàm đăng nhập
+def login():
+    username = input("🔑 Nhập tên tài khoản: ").strip()
+    player = players_collection.find_one({"username": username})
+    if player:
+        print(f"✅ Đăng nhập thành công! Chào mừng {username} 🎉.")
+        return username
+    else:
+        print("❌ Tài khoản không tồn tại. Vui lòng đăng ký trước.")
+        return None
+
+# Hàm kiểm tra số tiền cược hợp lệ
+def valid_bet(balance):
+    while True:
+        try:
+            bet = input(f"💸 Nhập số tiền bạn muốn cược (hoặc 'all' để cược toàn bộ {balance} PLDCoin): ").strip().lower()
+            if bet == 'all':
+                bet = balance
+            else:
+                bet = int(bet)
+
+            if bet <= 0:
+                print("⚠️ Số tiền cược phải lớn hơn 0.")
+            elif bet > balance:
+                print("⚠️ Bạn không đủ tiền để cược số tiền này.")
+            else:
+                return bet
+        except ValueError:
+            print("⚠️ Vui lòng nhập số hợp lệ.")
+            # time.sleep(1)
+            # clear()  # Xóa màn hình nếu nhập sai
+
+# Hàm chơi tài xỉu
+def choi_tai_xiu(username):
+    # Lấy thông tin người chơi
+    player = players_collection.find_one({"username": username})
+    balance = player['balance']
+
+    while True:
+        print(title2)
+        print(f"💰 **Số dư tài khoản**: {balance} PLDCoin")
+        cnc = input('🎲 Chọn "tai" hoặc "xiu" (nhập "thoat" để dừng): ').lower()
+        if cnc == 'thoat':
+            break
+        if cnc not in ['tai', 'xiu']:
+            print("⚠️ Vui lòng chọn 'tai' hoặc 'xiu'.")
+            time.sleep(1)
+            clear()
+            continue
+
+        bet = valid_bet(balance)  # Gọi hàm kiểm tra cược hợp lệ
+
+        # Điều chỉnh xác suất cho tài và xiu
+        if random.random() <= 0.4:  # 40% chance for 'tai'
+            result = 'tai'
+        else:  # 60% chance for 'xiu'
+            result = 'xiu'
+
+        # Kết quả tài/xỉu
+        xx1, xx2, xx3 = random.randint(1, 6), random.randint(1, 6), random.randint(1, 6)
+        total = xx1 + xx2 + xx3
+        print(f"🎲🎲🎲 Xúc xắc:")
+        time.sleep(1)
+        print("Xúc xắc 1 🎲: ", xx1)
+        time.sleep(1)
+        print("Xúc xắc 2 🎲: ", xx2)
+        time.sleep(1)
+        print("Xúc xắc 3 🎲: ", xx3)
+        time.sleep(1)
+        print("Tổng: ", total)
+
+        if cnc == result:
+            balance += bet
+            print("🎉 Bạn thắng!")
+        else:
+            balance -= bet
+            print("😢 Bạn thua!")
+
+        print(f"💰 **Số dư hiện tại**: {balance} PLDCoin")
+        send_to_discord(DISCORD_WEBHOOK_URL, username, balance)
+
+        # Cập nhật số dư vào MongoDB
+        players_collection.update_one({"username": username}, {"$set": {"balance": balance}})
+        time.sleep(5)
+        clear()
+
+
+# Main program
+title2 = '''
+___________      .__       .__        __________.__       .___
+\__    ___/____  |__|__  __|__|__ __  \______   \  |    __| _/
+  |    |  \__  \ |  \  \/  /  |  |  \  |     ___/  |   / __ | 
+  |    |   / __ \|  |>    <|  |  |  /  |    |   |  |__/ /_/ | 
+  |____|  (____  /__/__/\_ \__|____/   |____|   |____/\____ | 
+               \/         \/                               \/ 
+'''
+
+title = '''
+██████╗ ██╗   ██╗██████╗ ██╗     ██╗███╗   ██╗███████╗██████╗ ███████╗██╗   ██╗
+██╔══██╗██║   ██║██╔══██╗██║     ██║████╗  ██║██╔════╝██╔══██╗██╔════╝██║   ██║
+██████╔╝██║   ██║██████╔╝██║     ██║██╔██╗ ██║█████╗  ██║  ██║█████╗  ██║   ██║
+██╔═══╝ ██║   ██║██╔══██╗██║     ██║██║╚██╗██║██╔══╝  ██║  ██║██╔══╝  ╚██╗ ██╔╝
+██║     ╚██████╔╝██████╔╝███████╗██║██║ ╚████║███████╗██████╔╝███████╗ ╚████╔╝ 
+╚═╝      ╚═════╝ ╚═════╝ ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝╚═════╝ ╚══════╝  ╚═══╝  
+'''
+
+while True:
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print(title)
+    print("-------------------------------")
+    print("|1️⃣  Đăng ký tài khoản")
+    print("|2️⃣  Đăng nhập")
+    print("|3️⃣  Thoát\n")
+    choice = input("🔧 Lựa chọn của bạn: ").strip()
+    if choice == '1':
+        if register():
+            input("✅ Nhấn Enter để quay lại menu chính...")
+    elif choice == '2':
+        user = login()
+        if user:
+            while True:
+                os.system('cls' if os.name == 'nt' else 'clear')
+                print(title2)
+                print("-------------------------------\n")
+                print("1️⃣  Chơi tài xỉu")
+                print("\n2️⃣  Đăng xuất\n")
+                sub_choice = input("🔧 Lựa chọn của bạn: ").strip()
+                if sub_choice == '1':
+                    clear()
+                    choi_tai_xiu(user)
+                elif sub_choice == '2':
+                    print("👋 Đăng xuất thành công!")
+                    break
+    elif choice == '3':
+        print("👋 Tạm biệt! Hẹn gặp lại.")
+        break
+    else:
+        print("⚠️ Lựa chọn không hợp lệ.")
